@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Camera</h1>
+<p>Face recognition camera module</p>
+
+<section style="max-width:640px; margin:12px auto 0; display:flex; flex-direction:column; align-items:center;">
+    <video id="preview" autoplay playsinline muted style="width:100%; max-width:640px; height:360px; background:#000; border-radius:6px; object-fit:cover;"></video>
+
+    <div style="display:flex; gap:8px; align-items:center; margin-top:10px;">
+        <button id="start-camera" style="padding:8px 12px; border-radius:6px; border:1px solid #0366d6; background:#0366d6; color:#fff; cursor:pointer;">Start Camera</button>
+        <button id="stop-camera" style="padding:8px 12px; border-radius:6px; border:1px solid #d73a49; background:#fff; color:#d73a49; cursor:pointer;" disabled>Stop Camera</button>
+        <button id="mark-attendance" style="padding:8px 12px; border-radius:6px; border:1px solid #28a745; background:#28a745; color:#fff; cursor:pointer;" disabled>Mark Attendance</button>
+        <div id="status" style="margin-left:8px; color:#0366d6; font-size:14px;">Idle</div>
+    </div>
+</section>
+
+<script>
+(function(){
+    const startBtn = document.getElementById('start-camera');
+    const stopBtn = document.getElementById('stop-camera');
+    const markBtn = document.getElementById('mark-attendance');
+    const video = document.getElementById('preview');
+    const status = document.getElementById('status');
+    let stream = null;
+    let autoMarkTimer = null;
+
+    function setStatus(msg, isError = false){
+        status.textContent = msg;
+        status.style.color = isError ? '#d73a49' : '#0366d6';
+    }
+
+    function stopCamera(){
+        if (autoMarkTimer){
+            clearTimeout(autoMarkTimer);
+            autoMarkTimer = null;
+        }
+        if (stream){
+            stream.getTracks().forEach(t => t.stop());
+            video.srcObject = null;
+            stream = null;
+        }
+        markBtn.disabled = true;
+        stopBtn.disabled = true;
+        startBtn.disabled = false;
+        setStatus('Camera stopped');
+    }
+
+    async function doMarkAttendance(fromAuto = false){
+        if (autoMarkTimer){
+            clearTimeout(autoMarkTimer);
+            autoMarkTimer = null;
+        }
+        setStatus('Marking attendance...');
+        markBtn.disabled = true;
+        try{
+            const resp = await fetch('/attendance/api/mark/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roll_number: 'CS001' }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                setStatus(data.error || data.status || 'Failed to mark', true);
+                if (!fromAuto) markBtn.disabled = false;
+            } else {
+                if (data.status === 'attendance marked'){
+                    setStatus('Attendance Marked' + (data.subject ? ' — ' + data.subject : ''));
+                    // disable mark button after successful mark
+                    markBtn.disabled = true;
+                } else if (data.status === 'already marked'){
+                    setStatus('Already marked');
+                    // keep button enabled so user can retry if needed
+                    markBtn.disabled = false;
+                } else {
+                    setStatus(data.status || 'Unknown response');
+                    markBtn.disabled = false;
+                }
+            }
+        } catch (err) {
+            console.error('Attendance API error', err);
+            setStatus('Network error', true);
+            markBtn.disabled = false;
+        }
+    }
+
+    startBtn.addEventListener('click', async () => {
+        try{
+            setStatus('Requesting camera...');
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            video.srcObject = stream;
+            markBtn.disabled = false;
+            stopBtn.disabled = false;
+            startBtn.disabled = true;
+
+            // show scanning message and auto-mark after 3 seconds
+            setStatus('Scanning face...');
+            autoMarkTimer = setTimeout(() => doMarkAttendance(true), 3000);
+        } catch (err) {
+            console.error('Camera error', err);
+            setStatus('Unable to access camera', true);
+        }
+    });
+
+    stopBtn.addEventListener('click', () => {
+        stopCamera();
+    });
+
+    markBtn.addEventListener('click', async () => {
+        // cancel any pending auto-mark
+        if (autoMarkTimer){
+            clearTimeout(autoMarkTimer);
+            autoMarkTimer = null;
+        }
+        await doMarkAttendance(false);
+    });
+
+    // Stop camera when leaving the page
+    window.addEventListener('beforeunload', () => {
+        stopCamera();
+    });
+})();
+</script>
+
+{% endblock %}
