@@ -8,7 +8,7 @@
     <video id="preview" autoplay playsinline muted style="width:100%; max-width:640px; height:360px; background:#000; border-radius:6px; object-fit:cover;"></video>
 
     <div style="width:100%; max-width:640px; display:flex; gap:8px; align-items:center; margin-top:10px;">
-        <input id="roll-number" placeholder="Enter roll number (e.g., CS001)" style="flex:1; padding:8px 10px; border-radius:6px; border:1px solid #ddd;" />
+        <input id="roll-number" value="{{ roll_number }}" placeholder="Enter roll number (e.g., CS001)" style="flex:1; padding:8px 10px; border-radius:6px; border:1px solid #ddd;" />
         <button id="start-camera" style="padding:8px 12px; border-radius:6px; border:1px solid #0366d6; background:#0366d6; color:#fff; cursor:pointer;">Start Camera</button>
         <button id="stop-camera" style="padding:8px 12px; border-radius:6px; border:1px solid #d73a49; background:#fff; color:#d73a49; cursor:pointer;" disabled>Stop Camera</button>
         <button id="mark-attendance" style="padding:8px 12px; border-radius:6px; border:1px solid #28a745; background:#28a745; color:#fff; cursor:pointer;" disabled>Mark Attendance</button>
@@ -26,6 +26,7 @@
     const status = document.getElementById('status');
     const rollInput = document.getElementById('roll-number');
     let stream = null;
+    let cameraActive = false;
 
     function setStatus(msg, isError = false){
         status.textContent = msg;
@@ -37,9 +38,11 @@
             setStatus('Requesting camera...');
             stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
             video.srcObject = stream;
-            markBtn.disabled = false;
+            cameraActive = true;
             stopBtn.disabled = false;
             startBtn.disabled = true;
+            // enable mark button only if roll number present
+            markBtn.disabled = !rollInput.value.trim();
             setStatus('Camera started — Scanning face...');
         } catch (err) {
             console.error('Camera error', err);
@@ -58,11 +61,18 @@
             video.srcObject = null;
             stream = null;
         }
+        cameraActive = false;
         markBtn.disabled = true;
         stopBtn.disabled = true;
         startBtn.disabled = false;
         setStatus('Camera stopped');
     }
+
+    rollInput.addEventListener('input', () => {
+        if (cameraActive) {
+            markBtn.disabled = !rollInput.value.trim();
+        }
+    });
 
     async function markAttendance(){
         const roll = rollInput.value.trim();
